@@ -83,7 +83,7 @@ def random_crop(img: torch.Tensor, original_annotations: List[Dict],
         top, left, height, width = crop_tfm.get_params(img, scale=(min_scale, max_scale),
                                                        ratio=(min_ratio, max_ratio))
         annotations = deepcopy(original_annotations)
-        cropped_annotations = get_cropped_annots(annotations, left, top, width, height)
+        cropped_annotations = get_cropped_annots(annotations, left, top)
         if not len(cropped_annotations):
             continue
 
