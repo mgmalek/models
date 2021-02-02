@@ -20,8 +20,8 @@ normalize = transforms.Normalize(IMAGENET_MEANS, IMAGENET_STDS)
 denormalize = transforms.Normalize(IMAGENET_INV_MEANS, IMAGENET_INV_STDS)
 
 
-def get_cropped_annots(annotations: List[Dict], left: int, top: int,
-                       width: int, height: int) -> Tuple[torch.Tensor, List[Dict]]:
+def get_cropped_annots(annotations: List[Dict], left: int, top: int) -> Tuple[torch.Tensor, List[Dict]]:
+    """Adjust annotations based on the `left` and `top` crop parameters"""
     cropped_annots = []
     annotations = deepcopy(annotations)
     for annotation in annotations:

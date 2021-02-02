@@ -126,6 +126,7 @@ def overlaps(box: torch.Tensor, boxes: List[torch.Tensor], iou_threshold: float)
 
 
 def filter_overlapping_boxes(boxes: torch.Tensor, iou_threshold: float = 0.9):
+    """Filter out boxes that overlap too much with each other"""
     if not len(boxes):
         return [], []
 

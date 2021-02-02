@@ -2,6 +2,7 @@ import torch.nn as nn
 
 
 class ConvBNRelu(nn.Sequential):
+    """A standard 2d convolutional layer followed by batch norm and ReLU"""
     
     def __init__(self, in_channels: int, out_channels: int,
                  kernel_size: int = 3, stride: int = 2, groups: int = 1,
