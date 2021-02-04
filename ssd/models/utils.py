@@ -36,8 +36,8 @@ def generate_map_data(img_size: int, map_sizes: List[int], body: nn.Module) -> L
 def get_conv_block(in_channels: int, out_channels: int, stride: int = 2,
                    padding: int = None, depthwise: bool = False) -> nn.Module:
     """Return a series of two convolutional layers with batch norm and ReLU"""
-    groups = in_channels if depthwise else 1
-    mid_channels = max(128, out_channels // 2)
+    mid_channels = out_channels // 2
+    groups = mid_channels if depthwise else 1
     return nn.Sequential(
         *ConvBNRelu(in_channels, mid_channels, kernel_size=1, stride=1, groups=groups),
         *ConvBNRelu(mid_channels, out_channels, kernel_size=3, stride=stride, padding=padding, groups=groups),
