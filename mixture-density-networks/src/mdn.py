@@ -2,6 +2,7 @@ import math
 
 import torch
 import torch.nn as nn
+from torch.distributions import Normal, Categorical
 
 from typing import List
 
@@ -33,19 +34,35 @@ class MixtureDensityNetwork(nn.Module):
         weights = self.weight_network(features).reshape(-1, self.num_gaussians)
         variances = logvars.exp()
 
-        return means, variances, weights
+        normals = Normal(means, variances.unsqueeze(-1))
+        weight_dist = Categorical(probs=weights)
+
+        return normals, weight_dist
     
-    def loss_func(self, targs, means, variances, weights):
-        # Note: we can't use an analytic expression for the log likelihood
-        # since we need to sum the mixture densities _inside_ the logarithm
-        reshaped_targs = targs.unsqueeze(-2).expand_as(means)
-        separate_densities = self.gaussian_pdf(reshaped_targs, means, variances)
-        mixed_densities = (separate_densities * weights).sum(-1)
-        losses = -mixed_densities.log()
-        loss = losses.mean()
-        return loss
+    def loss_func(self, targs: torch.Tensor, normals: Normal, weight_dist: Categorical):
+        """Return the negative log-likelihood loss"""
+        reshaped_targs = targs.unsqueeze(1).expand_as(normals.loc)
+
+        # Since each output dim of the multivariate Gaussian is independent, we
+        # find the log probability of the target value by summing the log
+        # probabilities along each dimension. This is equivalent to multiplying
+        # the likelihoods and then taking their logarithm)
+        log_probs = normals.log_prob(reshaped_targs)
+        log_probs = log_probs.sum(-1)
+        log_probs += weight_dist.probs.log() # Equivalent to multiplying by weights then taking the log
+        log_likelihoods = torch.logsumexp(log_probs, dim=1)
+        nll = -log_likelihoods.mean()
+        
+        return nll
     
-    def gaussian_pdf(self, x, mu, variance):
-        coef_term = torch.reciprocal(2 * math.pi * variance).pow(self.output_dim / 2)
-        exp_term = torch.exp(-0.5 * (x - mu).pow(2).sum(-1) * torch.reciprocal(variance))
-        return coef_term * exp_term
+    def sample(self, x: torch.Tensor) -> torch.Tensor:
+        """Perform a forward pass and then sample from the outputs distributions"""
+        with torch.no_grad():
+            normals, weight_dist = self(x)
+
+        idxs = weight_dist.sample()
+        idxs = idxs.unsqueeze(-1)
+        idxs = torch.stack([idxs, idxs], dim=-1)
+        preds = normals.loc.gather(1, idxs)
+
+        return preds
