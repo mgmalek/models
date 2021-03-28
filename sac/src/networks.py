@@ -5,7 +5,8 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Normal
 
-from . import SACConfig
+from .config import SACConfig
+from .gumbel_softmax import GumbelSoftmax
 
 from typing import Tuple
 
@@ -81,8 +82,9 @@ class MultipleQFunctions(nn.Module):
             p.requires_grad = True
     
 
-class Policy(nn.Module):
-    """A network to learn an entropy-regularised stochastic policy"""
+class ContinuousActionPolicy(nn.Module):
+    """A network to learn an entropy-regularised stochastic policy for
+    continuous-action environments"""
     
     def __init__(self, config: SACConfig):
         super().__init__()
@@ -92,22 +94,67 @@ class Policy(nn.Module):
         self.nn = NeuralNet(input_dim, output_dim, self.config)
         self.optimiser = optim.Adam(self.parameters(), lr=self.config.lr)
     
-    def forward(self, state: torch.Tensor, use_mean: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, state: torch.Tensor, rsample: bool = True) -> Tuple[torch.Tensor, torch.Tensor]:
         nn_out = self.nn(state)
         means = nn_out[:, self.config.action_dim:]
         logstds = nn_out[:, :self.config.action_dim]
         stds = logstds.exp()
         
         action_dist = Normal(means, stds)
-        action = means if use_mean else action_dist.rsample()
+        action = action_dist.rsample() if rsample else means
 
-        # Stabler version from Spinning Up implementation
-        logprob = action_dist.log_prob(action).sum(-1, keepdims=True)
-        logprob -= (2*(np.log(2) - action - F.softplus(-2*action))).sum(-1, keepdims=True)
+        # Stabler version of log-probability calculation
+        # Reference: Spinning Up implementation of SAC
+        logprobs = action_dist.log_prob(action).sum(-1, keepdims=True)
+        logprobs -= (2*(np.log(2) - action - F.softplus(-2*action))).sum(-1, keepdims=True)
         
         action = torch.tanh(action)
         
-        return action, logprob
+        return action, logprobs
+    
+    def train(self, logprobs: torch.Tensor, values: torch.Tensor,
+              temperature: torch.Tensor, retain_graph: bool = False) -> torch.Tensor:
+        self.optimiser.zero_grad()
+        policy_loss = torch.mean(temperature * logprobs - values)
+        policy_loss.backward(retain_graph=retain_graph)
+        self.optimiser.step()
+        return policy_loss.item()
+    
+    def disable_grad(self):
+        for p in self.parameters():
+            p.requires_grad = False
+            
+    def enable_grad(self):
+        for p in self.parameters():
+            p.requires_grad = True
+
+
+class DiscreteActionPolicy(nn.Module):
+    """A network to learn an entropy-regularised stochastic policy for
+    continuous-action environments"""
+    
+    def __init__(self, config: SACConfig):
+        super().__init__()
+        self.config = config
+        input_dim = self.config.observation_dim
+        output_dim = self.config.action_dim
+        self.nn = NeuralNet(input_dim, output_dim, self.config)
+        self.gumbel_softmax = GumbelSoftmax()
+        self.optimiser = optim.Adam(self.parameters(), lr=self.config.lr)
+    
+    def forward(self, state: torch.Tensor, rsample: bool = True) -> Tuple[torch.Tensor, torch.Tensor]:
+        nn_out = self.nn(state)
+        logprobs = torch.log_softmax(nn_out, -1)
+
+        if rsample:
+            one_hot_action = self.gumbel_softmax(logprobs, temperature=self.config.gumbel_temperature)
+            one_hot_action = (one_hot_action - logprobs).detach() + logprobs # Straight-through gradients
+        else:
+            one_hot_action = F.one_hot(logprobs.argmax(-1), num_classes=logprobs.size(-1))
+        
+        logprobs = logprobs.gather(-1, one_hot_action.detach().argmax(-1, keepdims=True))
+
+        return one_hot_action, logprobs
     
     def train(self, logprobs: torch.Tensor, values: torch.Tensor,
               temperature: torch.Tensor, retain_graph: bool = False) -> torch.Tensor:
@@ -178,7 +225,10 @@ class SAC(nn.Module):
         self.config = config
         self.q_networks = MultipleQFunctions(self.config)
         self.target_q_networks = MultipleQFunctions(self.config)
-        self.policy_network = Policy(self.config)
+        if self.config.discrete_actions:
+            self.policy_network = DiscreteActionPolicy(self.config)
+        else:
+            self.policy_network = ContinuousActionPolicy(self.config)
         self.temperature = Temperature(self.config)
 
         self.q_networks.disable_grad()
@@ -197,23 +247,19 @@ class SAC(nn.Module):
         
         # Train Q-Functions
         self.q_networks.enable_grad()
-
         with torch.no_grad():
             next_actions, next_action_logprobs = self.policy_network(next_states)
             next_values = self.target_q_networks(next_states, next_actions)
         
-        self.q_networks.train(states, actions, rewards, is_done, next_values,
-                              next_action_logprobs, temperature, retain_graph)
-        
+        q_loss = self.q_networks.train(states, actions, rewards, is_done, next_values,
+                                       next_action_logprobs, temperature, retain_graph)
         self.q_networks.disable_grad()
 
         # Train Policy Network
         self.policy_network.enable_grad()
-
         sample_actions, sample_action_logprobs = self.policy_network(states)
         sample_action_values = self.q_networks(states, sample_actions)
-        self.policy_network.train(sample_action_logprobs, sample_action_values, temperature, retain_graph)
-        
+        p_loss = self.policy_network.train(sample_action_logprobs, sample_action_values, temperature, retain_graph)
         self.policy_network.disable_grad()
 
         # Update Temperature (if applicable)
@@ -224,3 +270,5 @@ class SAC(nn.Module):
         
         # Update Target Q-networks using polyak averaging
         self.target_q_networks.train_polyak(self.q_networks)
+
+        return q_loss, p_loss

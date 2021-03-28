@@ -40,8 +40,13 @@ class EnvWrapper(object):
     def step(self, render=False):
         obs = self.latest_obs
         action = self.agent(obs)
-        rescaled_action = self.scale_action(torch.as_tensor(action, dtype=torch.float))
-        next_obs, reward, done, _ = self.env.step(rescaled_action)
+        
+        if not self.config.discrete_actions:
+            env_action = self.scale_action(action)
+        else:
+            env_action = deepcopy(action)
+        
+        next_obs, reward, done, _ = self.env.step(env_action)
         reward *= self.config.reward_scale
         self.latest_obs = deepcopy(next_obs)
         self.rewards.append(reward)
@@ -89,7 +94,8 @@ class EnvWrapper(object):
                 plt.show()
             
             action = self.agent(obs)
-            action = self.scale_action(action)
+            if not self.config.discrete_actions:
+                action = self.scale_action(action)
             next_obs, reward, done, _ = env.step(action)
             obs = deepcopy(next_obs)
             idx += 1

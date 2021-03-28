@@ -2,6 +2,7 @@ import random
 from collections import namedtuple
 
 import torch
+import torch.nn.functional as F
 
 from .config import SACConfig
 
@@ -48,7 +49,10 @@ class ReplayBuffer():
         batch_size = min(self.config.batch_size, len(self))
         states, actions, rewards, next_states, is_done = zip(*random.sample(self.data, batch_size))
         states = torch.as_tensor(states, dtype=torch.float).cuda()
-        actions = torch.as_tensor(actions, dtype=torch.float).reshape(-1, self.config.action_dim).cuda()
+        actions = torch.as_tensor(actions, dtype=torch.float)
+        if self.config.discrete_actions:
+            actions = F.one_hot(actions.long(), num_classes=self.config.action_dim).float()
+        actions = actions.reshape(-1, self.config.action_dim).cuda()
         rewards = torch.as_tensor(rewards, dtype=torch.float).reshape(-1, 1).cuda()
         next_states = torch.as_tensor(next_states, dtype=torch.float).cuda()
         is_done = torch.as_tensor(is_done, dtype=torch.float).reshape(-1, 1).cuda()

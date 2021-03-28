@@ -1,7 +1,7 @@
 import gym
 import torch.nn as nn
 
-from typing import Optional
+from typing import Optional, List
 
 
 class SACConfig(object):
@@ -17,12 +17,13 @@ class SACConfig(object):
         temperature: float = 0.2,
         max_episode_length: int = 200,
         reward_scale: float = 1.0,
+        discrete_actions: bool = False,
 
         # Data Collection Config,
         random_steps: int = 10_000,
         initial_policy_steps: int = 1000,
-        env_steps: int = 16,
-        training_steps: int = 16,
+        env_steps: int = 1,
+        training_steps: int = 1,
         buffer_size: int = int(1e6),
         
         # Neural Network Config,
@@ -31,6 +32,7 @@ class SACConfig(object):
         num_q_networks: int = 2,
         adjust_temperature: bool = True,
         entropy_target: Optional[float] = None,
+        gumbel_temperature: float = 1.0,
 
         # Training Config,
         lr: float = 3e-4,
@@ -49,6 +51,7 @@ class SACConfig(object):
         self.temperature = temperature
         self.max_episode_length = max_episode_length
         self.reward_scale = reward_scale
+        self.discrete_actions = discrete_actions
 
         # Data Collection Config
         self.random_steps = random_steps
@@ -63,6 +66,7 @@ class SACConfig(object):
         self.num_q_networks = num_q_networks
         self.adjust_temperature = adjust_temperature
         self.entropy_target = entropy_target if entropy_target is not None else -float(action_dim)
+        self.gumbel_temperature = gumbel_temperature
 
         # Training Config
         self.lr = lr

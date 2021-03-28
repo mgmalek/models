@@ -1,7 +1,7 @@
 import gym
-from gym import spaces
-
 import numpy as np
+
+from typing import Union
 
 
 class DebugEnv1(gym.Env):
@@ -14,10 +14,9 @@ class DebugEnv1(gym.Env):
     loss calculation or the optimizer.
     """
     
-    def __init__(self):
+    def __init__(self, discrete_actions: bool = False):
         self.done = False
-        self.action_space = spaces.Box(low=0.0, high=0.0, shape=(1,))
-        self.observation_space = spaces.Box(low=0.0, high=0.0, shape=(1,))
+        self.discrete_actions = discrete_actions
     
     def reset(self):
         self.done = False
@@ -28,6 +27,9 @@ class DebugEnv1(gym.Env):
         reward = 1.0
         done = True
         return next_state, reward, done, {}
+    
+    def render(self):
+        pass
 
 
 class DebugEnv2(gym.Env):
@@ -41,10 +43,9 @@ class DebugEnv2(gym.Env):
     backpropagation through my network is broken.
     """
     
-    def __init__(self):
+    def __init__(self, discrete_actions: bool = False):
         self.done = False
-        self.action_space = spaces.Box(low=0.0, high=0.0, shape=(1,))
-        self.observation_space = spaces.Box(low=-1.0, high=1.0, shape=(1,))
+        self.discrete_actions = discrete_actions
         self.latest_obs = None
     
     def _get_obs(self):
@@ -61,6 +62,9 @@ class DebugEnv2(gym.Env):
         next_state = self.latest_obs
         done = True
         return next_state, reward, done, {}
+    
+    def render(self):
+        pass
 
 
 class DebugEnv3(gym.Env):
@@ -73,13 +77,12 @@ class DebugEnv3(gym.Env):
     my reward discounting is broken.
     """
     
-    def __init__(self):
-        self.done = False
-        self.action_space = spaces.Box(low=0.0, high=0.0, shape=(1,))
-        self.observation_space = spaces.Box(low=-1.0, high=1.0, shape=(1,))
+    def __init__(self, discrete_actions: bool = False):
+        self.discrete_actions = discrete_actions
         self.idx = 0
     
     def reset(self):
+        self.idx = 0
         return np.array([0.0])
     
     def step(self, action: np.array):
@@ -88,11 +91,13 @@ class DebugEnv3(gym.Env):
             self.idx += 1
         elif self.idx == 1:
             next_state, reward, done = np.array([-1.0]), 1.0, True
-            self.idx += 1
         else:
             raise RuntimeError("Environment has already ended.")
         
         return next_state, reward, done, {}
+    
+    def render(self):
+        pass
 
 
 class DebugEnv4(gym.Env):
@@ -110,17 +115,26 @@ class DebugEnv4(gym.Env):
     
     def __init__(self):
         self.done = False
-        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(1,))
-        self.observation_space = spaces.Box(low=0.0, high=0.0, shape=(1,))
         self.idx = 0
     
     def reset(self):
         return np.array([0.0])
     
-    def step(self, action: np.array):
-        assert -1 <= action[0] <= 1
+    def step(self, action: Union[np.array, int]):
+        if isinstance(action, int):
+            # Discrete Actions {0, 1}
+            assert action in {0, 1}
+            action = float(action * 2 - 1)
+        else:
+            # Continuous Actions
+            assert -1 <= action[0] <= 1
+            action = action[0]
         
-        return np.array([0.0]), action[0], True, {}
+        reward = float(action)
+        return np.array([0.0]), reward, True, {}
+    
+    def render(self):
+        pass
 
 
 class DebugEnv5(gym.Env):
@@ -137,10 +151,9 @@ class DebugEnv5(gym.Env):
     batching process is feeding the value network stale experience.
     """
     
-    def __init__(self):
+    def __init__(self, discrete_actions: bool = False):
         self.done = False
-        self.action_space = spaces.Box(low=0.0, high=0.0, shape=(1,))
-        self.observation_space = spaces.Box(low=-1.0, high=1.0, shape=(1,))
+        self.discrete_actions = discrete_actions
         self.latest_obs = None
     
     def _get_obs(self):
@@ -152,9 +165,20 @@ class DebugEnv5(gym.Env):
         return self.latest_obs
     
     def step(self, action: np.array):
-        assert -1 <= action[0] <= 1
-        reward = action[0] * self.latest_obs[0]
+        if isinstance(action, int):
+            # Discrete Actions {0, 1}
+            assert action in {0, 1}
+            action = float(action * 2 - 1)
+        else:
+            # Continuous Actions
+            assert -1 <= action[0] <= 1
+            action = action[0]
+
+        reward = float(action) * self.latest_obs[0]
         self.latest_obs = self._get_obs()
         next_state = self.latest_obs
         done = True
         return next_state, reward, done, {}
+    
+    def render(self):
+        pass
