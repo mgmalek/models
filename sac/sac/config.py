@@ -10,14 +10,9 @@ class SACConfig(object):
         self,
         # Environment Config,
         env: gym.Env,
-        observation_dim: int,
-        action_dim: int,
-        action_min: float = -2.0,
-        action_max: float = 2.0,
-        temperature: float = 0.2,
-        max_episode_length: int = 200,
+        temperature: float = 1.0,
+        max_episode_length: int = 1000,
         reward_scale: float = 1.0,
-        discrete_actions: bool = False,
 
         # Data Collection Config,
         random_steps: int = 10_000,
@@ -31,7 +26,6 @@ class SACConfig(object):
         units_per_layer: int = 256,
         num_q_networks: int = 2,
         adjust_temperature: bool = True,
-        entropy_target: Optional[float] = None,
         gumbel_temperature: float = 1.0,
 
         # Training Config,
@@ -39,19 +33,20 @@ class SACConfig(object):
         discount: float = 0.99,
         batch_size: int = 256,
         nonlinearity: nn.Module = nn.ReLU,
-        targ_smoothing_coeff: float = 0.995,
-        total_train_steps: int = 1_000_000,
+        polyak_tau: float = 0.995,
+        total_train_steps: int = 5_000_000,
     ):
         # Environment Config
         self.env = env
-        self.observation_dim = observation_dim
-        self.action_dim = action_dim
-        self.action_min = action_min
-        self.action_max = action_max
+        self.observation_dim = env().observation_space.shape[0]
+        action_space = env().action_space
+        self.discrete_actions = isinstance(action_space, gym.spaces.Discrete)
+        self.action_dim = action_space.n if self.discrete_actions else action_space.shape[0]
+        self.action_min = action_space.low.min() if not self.discrete_actions else None
+        self.action_max = action_space.high.max() if not self.discrete_actions else None
         self.temperature = temperature
         self.max_episode_length = max_episode_length
         self.reward_scale = reward_scale
-        self.discrete_actions = discrete_actions
 
         # Data Collection Config
         self.random_steps = random_steps
@@ -65,7 +60,7 @@ class SACConfig(object):
         self.units_per_layer = units_per_layer
         self.num_q_networks = num_q_networks
         self.adjust_temperature = adjust_temperature
-        self.entropy_target = entropy_target if entropy_target is not None else -float(action_dim)
+        self.entropy_target = -float(self.action_dim)
         self.gumbel_temperature = gumbel_temperature
 
         # Training Config
@@ -73,5 +68,5 @@ class SACConfig(object):
         self.discount = discount
         self.batch_size = batch_size
         self.nonlinearity = nonlinearity
-        self.targ_smoothing_coeff = targ_smoothing_coeff
+        self.polyak_tau = polyak_tau
         self.total_train_steps = total_train_steps
