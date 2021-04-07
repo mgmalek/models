@@ -59,7 +59,7 @@ class MixtureDensityNetwork(nn.Module):
 
         idxs = weight_dist.sample()  # Determine which Gaussian to use for this sample
         idxs = idxs[:, None, None]
-        idxs = idxs.repeat(1, 1, 2)  # Shape: (batch, 1, output_dim)
+        idxs = idxs.repeat(1, 1, self.output_dim)  # Shape: (batch, 1, output_dim)
         sample = normals.sample().gather(1, idxs)  # Sample from the relevant Gaussian
         sample = sample.squeeze(1)   # Shape: (batch, output_dim)
         return sample
